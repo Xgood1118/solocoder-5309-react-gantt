@@ -7,12 +7,15 @@ import {
   loadCurrentProjectId,
   saveCurrentProjectId,
 } from './utils/storage';
+import { ROLE_LABELS, PLAN_LABELS } from './utils/permissions';
 
 export default function App() {
   const [projects, setProjects] = useState([]);
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+  const [role, setRole] = useState('pm');
+  const [planType, setPlanType] = useState('free');
 
   useEffect(() => {
     const savedProjects = loadProjects();
@@ -167,13 +170,63 @@ export default function App() {
 
         <div style={{ flex: 1 }} />
 
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          任务: {currentProject.tasks?.length || 0} | 依赖: {currentProject.dependencies?.length || 0}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>版本:</span>
+            <select
+              value={planType}
+              onChange={(e) => setPlanType(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 4,
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              {Object.entries(PLAN_LABELS).map(([value, label]) => (
+                <option key={value} value={value} style={{ color: '#1f2937' }}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>角色:</span>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                border: '1px solid rgba(255,255,255,0.3)',
+                borderRadius: 4,
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                color: 'white',
+                fontSize: 12,
+                cursor: 'pointer',
+              }}
+            >
+              {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                <option key={value} value={value} style={{ color: '#1f2937' }}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ fontSize: 12, opacity: 0.7 }}>
+            任务: {currentProject.tasks?.length || 0} | 依赖: {currentProject.dependencies?.length || 0}
+          </div>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <GanttChart project={currentProject} onProjectChange={handleProjectChange} />
+        <GanttChart
+          project={currentProject}
+          onProjectChange={handleProjectChange}
+          role={role}
+          planType={planType}
+          onRoleChange={setRole}
+        />
       </div>
 
       {showProjectManager && (

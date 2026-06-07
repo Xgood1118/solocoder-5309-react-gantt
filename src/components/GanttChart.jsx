@@ -39,12 +39,28 @@ import {
   cascadeDateChanges,
   DEPENDENCY_TYPES,
   getTaskStatus,
+  PROJECT_STATUS,
+  PROJECT_STATUS_LABELS,
+  PROJECT_STATUS_COLORS,
+  PROJECT_STATUS_FLOW,
+  canTransitionProjectStatus,
 } from '../utils/criticalPath';
+import {
+  hasPermission,
+  PERMISSIONS,
+  canAddTask,
+  canAddDependency,
+  checkQuotaWarnings,
+  ROLE_LABELS,
+} from '../utils/permissions';
 import { exportProjectToJSON, importProjectFromJSON } from '../utils/storage';
 
 export default function GanttChart({
   project,
   onProjectChange,
+  role = 'pm',
+  planType = 'free',
+  onRoleChange,
 }) {
   const [viewMode, setViewMode] = useState(VIEW_MODES.DAY);
   const [viewStart, setViewStart] = useState(() => parseDate(project.viewStartDate || project.startDate));
@@ -73,8 +89,30 @@ export default function GanttChart({
   const [depFromTaskId, setDepFromTaskId] = useState(null);
   const [depType, setDepType] = useState(DEPENDENCY_TYPES.FS);
 
+  const [showStatusMenu, setShowStatusMenu] = useState(false);
+
   const ganttRef = useRef(null);
   const scrollContainerRef = useRef(null);
+
+  const canEditTask = hasPermission(role, PERMISSIONS.EDIT_TASK);
+  const canEditTaskDate = hasPermission(role, PERMISSIONS.EDIT_TASK_DATE);
+  const canEditTaskProgress = hasPermission(role, PERMISSIONS.EDIT_TASK_PROGRESS);
+  const canAddTaskPerm = hasPermission(role, PERMISSIONS.ADD_TASK);
+  const canDeleteTask = hasPermission(role, PERMISSIONS.DELETE_TASK);
+  const canAddDep = hasPermission(role, PERMISSIONS.ADD_DEPENDENCY);
+  const canDeleteDep = hasPermission(role, PERMISSIONS.DELETE_DEPENDENCY);
+  const canExport = hasPermission(role, PERMISSIONS.EXPORT);
+  const canImport = hasPermission(role, PERMISSIONS.IMPORT);
+  const canEditProject = hasPermission(role, PERMISSIONS.EDIT_PROJECT);
+  const canViewDetails = hasPermission(role, PERMISSIONS.VIEW_DETAILS);
+
+  const quotaWarnings = useMemo(
+    () => checkQuotaWarnings(tasks, dependencies, planType),
+    [tasks, dependencies, planType]
+  );
+
+  const canAddTaskWithQuota = canAddTask(tasks.length, planType) && canAddTaskPerm;
+  const canAddDepWithQuota = canAddDependency(dependencies.length, planType) && canAddDep;
 
   const criticalPath = useMemo(
     () => calculateCriticalPath(tasks, dependencies),
@@ -412,24 +450,111 @@ export default function GanttChart({
 
   const todayLeft = getTodayPosition(viewStart, viewMode);
 
-  const statusLabels = {
+  const taskStatusLabels = {
     'not-started': '未开始',
     'in-progress': '进行中',
     'completed': '已完成',
     'delayed': '已延期',
+    'severely-delayed': '严重延期',
     'paused': '已暂停',
+    'overdue-warning': '超期预警',
   };
 
-  const statusColors = {
+  const taskStatusColors = {
     'not-started': '#9ca3af',
     'in-progress': '#3b82f6',
     'completed': '#22c55e',
     'delayed': '#ef4444',
+    'severely-delayed': '#b91c1c',
     'paused': '#eab308',
+    'overdue-warning': '#f97316',
+  };
+
+  const projectStatus = project.status || 'draft';
+  const availableTransitions = PROJECT_STATUS_FLOW[projectStatus] || [];
+
+  const handleStatusChange = (newStatus) => {
+    if (!canTransitionProjectStatus(projectStatus, newStatus)) {
+      alert(`无法从「${PROJECT_STATUS_LABELS[projectStatus]}」切换到「${PROJECT_STATUS_LABELS[newStatus]}」`);
+      return;
+    }
+    if (onProjectChange) {
+      onProjectChange({
+        ...project,
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    setShowStatusMenu(false);
+  };
+
+  const handleAddTaskWithCheck = () => {
+    if (!canAddTaskPerm) {
+      alert('您没有添加任务的权限');
+      return;
+    }
+    if (!canAddTask(tasks.length, planType)) {
+      alert('免费版最多 50 个任务，请升级专业版解锁更多');
+      return;
+    }
+    handleAddTask();
+  };
+
+  const handleAddDepWithCheck = () => {
+    if (!canAddDep) {
+      alert('您没有添加依赖的权限');
+      return;
+    }
+    if (!canAddDependency(dependencies.length, planType)) {
+      alert('免费版最多 20 条依赖，请升级专业版解锁更多');
+      return;
+    }
+    handleAddDependency();
   };
 
   return (
     <div className="gantt-chart" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {quotaWarnings.length > 0 && (
+        <div
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#fffbeb',
+            borderBottom: '1px solid #fde68a',
+            display: 'flex',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          {quotaWarnings.map((w, i) => (
+            <div
+              key={i}
+              style={{
+                fontSize: 12,
+                color: w.type.includes('error') ? '#dc2626' : '#d97706',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span>⚠️</span>
+              <span>{w.message}</span>
+              {w.type.includes('error') && (
+                <span
+                  style={{
+                    marginLeft: 4,
+                    color: '#3b82f6',
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  升级专业版
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         className="gantt-toolbar"
         style={{
@@ -442,6 +567,100 @@ export default function GanttChart({
           alignItems: 'center',
         }}
       >
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#6b7280' }}>项目状态:</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 10px',
+              backgroundColor: 'white',
+              border: '1px solid #d1d5db',
+              borderRadius: 6,
+              cursor: canEditProject ? 'pointer' : 'not-allowed',
+              opacity: canEditProject ? 1 : 0.6,
+            }}
+            onClick={() => canEditProject && setShowStatusMenu(!showStatusMenu)}
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                backgroundColor: PROJECT_STATUS_COLORS[projectStatus] || '#9ca3af',
+              }}
+            />
+            <span style={{ fontSize: 13, color: '#374151' }}>
+              {PROJECT_STATUS_LABELS[projectStatus] || projectStatus}
+            </span>
+            {canEditProject && <span style={{ fontSize: 10, color: '#9ca3af' }}>▼</span>}
+          </div>
+          {showStatusMenu && canEditProject && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: 4,
+                backgroundColor: 'white',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                zIndex: 100,
+                minWidth: 140,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{
+                  padding: '8px 12px',
+                  fontSize: 12,
+                  color: '#9ca3af',
+                  borderBottom: '1px solid #f3f4f6',
+                }}
+              >
+                切换到:
+              </div>
+              {availableTransitions.length === 0 ? (
+                <div style={{ padding: '8px 12px', fontSize: 12, color: '#9ca3af' }}>
+                  无可用状态
+                </div>
+              ) : (
+                availableTransitions.map((status) => (
+                  <div
+                    key={status}
+                    onClick={() => handleStatusChange(status)}
+                    style={{
+                      padding: '8px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      cursor: 'pointer',
+                      fontSize: 13,
+                      color: '#374151',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        backgroundColor: PROJECT_STATUS_COLORS[status],
+                      }}
+                    />
+                    {PROJECT_STATUS_LABELS[status]}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 24, backgroundColor: '#e5e7eb' }} />
+
         <div style={{ display: 'flex', gap: 4, backgroundColor: 'white', borderRadius: 6, border: '1px solid #d1d5db', padding: 2 }}>
           {Object.values(VIEW_MODES).map((mode) => (
             <button
@@ -485,7 +704,7 @@ export default function GanttChart({
             style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
           >
             <option value="">全部</option>
-            {Object.entries(statusLabels).map(([value, label]) => (
+            {Object.entries(taskStatusLabels).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
@@ -517,15 +736,31 @@ export default function GanttChart({
 
         <div style={{ flex: 1 }} />
 
+        {onRoleChange && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>角色:</span>
+            <select
+              value={role}
+              onChange={(e) => onRoleChange(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13 }}
+            >
+              {Object.entries(ROLE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <button
-          onClick={handleAddTask}
+          onClick={handleAddTaskWithCheck}
+          disabled={!canAddTaskWithQuota}
           style={{
             padding: '6px 14px',
             border: 'none',
             borderRadius: 6,
-            backgroundColor: '#22c55e',
+            backgroundColor: canAddTaskWithQuota ? '#22c55e' : '#9ca3af',
             color: 'white',
-            cursor: 'pointer',
+            cursor: canAddTaskWithQuota ? 'pointer' : 'not-allowed',
             fontSize: 13,
             fontWeight: 500,
           }}
@@ -534,23 +769,23 @@ export default function GanttChart({
         </button>
 
         <button
-          onClick={handleAddDependency}
-          disabled={!selectedTaskId || isCreatingDependency}
+          onClick={handleAddDepWithCheck}
+          disabled={!selectedTaskId || isCreatingDependency || !canAddDepWithQuota}
           style={{
             padding: '6px 14px',
             border: '1px solid #d1d5db',
             borderRadius: 6,
             backgroundColor: 'white',
             color: '#374151',
-            cursor: selectedTaskId && !isCreatingDependency ? 'pointer' : 'not-allowed',
+            cursor: selectedTaskId && !isCreatingDependency && canAddDepWithQuota ? 'pointer' : 'not-allowed',
             fontSize: 13,
-            opacity: selectedTaskId && !isCreatingDependency ? 1 : 0.5,
+            opacity: selectedTaskId && !isCreatingDependency && canAddDepWithQuota ? 1 : 0.5,
           }}
         >
           {isCreatingDependency ? '选择目标任务...' : '添加依赖'}
         </button>
 
-        {isCreatingDependency && (
+        {isCreatingDependency && canAddDep && (
           <select
             value={depType}
             onChange={(e) => setDepType(e.target.value)}
@@ -565,14 +800,32 @@ export default function GanttChart({
 
         <button
           onClick={handleExportPNG}
-          style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, backgroundColor: 'white', cursor: 'pointer', fontSize: 13 }}
+          disabled={!canExport}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            backgroundColor: canExport ? 'white' : '#f9fafb',
+            cursor: canExport ? 'pointer' : 'not-allowed',
+            fontSize: 13,
+            opacity: canExport ? 1 : 0.5,
+          }}
         >
           导出PNG
         </button>
 
         <button
           onClick={handleExportJSON}
-          style={{ padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: 6, backgroundColor: 'white', cursor: 'pointer', fontSize: 13 }}
+          disabled={!canExport}
+          style={{
+            padding: '6px 12px',
+            border: '1px solid #d1d5db',
+            borderRadius: 6,
+            backgroundColor: canExport ? 'white' : '#f9fafb',
+            cursor: canExport ? 'pointer' : 'not-allowed',
+            fontSize: 13,
+            opacity: canExport ? 1 : 0.5,
+          }}
         >
           导出JSON
         </button>
@@ -582,9 +835,10 @@ export default function GanttChart({
             padding: '6px 12px',
             border: '1px solid #d1d5db',
             borderRadius: 6,
-            backgroundColor: 'white',
-            cursor: 'pointer',
+            backgroundColor: canEditTask ? 'white' : '#f9fafb',
+            cursor: canEditTask ? 'pointer' : 'not-allowed',
             fontSize: 13,
+            opacity: canEditTask ? 1 : 0.5,
           }}
         >
           导入JSON
@@ -593,6 +847,7 @@ export default function GanttChart({
             accept=".json"
             onChange={handleImportJSON}
             style={{ display: 'none' }}
+            disabled={!canEditTask}
           />
         </label>
       </div>
@@ -695,7 +950,7 @@ export default function GanttChart({
                           width: 10,
                           height: 10,
                           borderRadius: task.isMilestone ? 0 : 2,
-                          backgroundColor: statusColors[status],
+                          backgroundColor: taskStatusColors[status],
                           transform: task.isMilestone ? 'rotate(45deg)' : 'none',
                           flexShrink: 0,
                         }}
@@ -825,11 +1080,12 @@ export default function GanttChart({
                         width={pos.width}
                         top={HEADER_HEIGHT + rowIndex * ROW_HEIGHT}
                         isCritical={criticalPath.includes(task.id)}
-                        onMouseDown={(e) => handleTaskDragStart(e, task, 'move')}
-                        onDoubleClick={handleTaskDoubleClick}
-                        onResizeStart={(e, t, side) => handleTaskDragStart(e, t, side)}
+                        onMouseDown={(e) => canEditTaskDate && handleTaskDragStart(e, task, 'move')}
+                        onDoubleClick={canEditTask ? handleTaskDoubleClick : undefined}
+                        onResizeStart={(e, t, side) => canEditTaskDate && handleTaskDragStart(e, t, side)}
                         isDragging={isDragging && dragTaskId === task.id && dragType === 'move'}
                         isResizing={isDragging && dragTaskId === task.id && (dragType === 'left' || dragType === 'right')}
+                        readOnly={!canEditTask}
                       />
                     </div>
                   );

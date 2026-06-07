@@ -8,6 +8,66 @@ export const DEPENDENCY_TYPES = {
   SF: 'SF',
 };
 
+export const PROJECT_STATUS = {
+  DRAFT: 'draft',
+  PLANNING: 'planning',
+  IN_PROGRESS: 'in-progress',
+  PAUSED: 'paused',
+  COMPLETED: 'completed',
+  ARCHIVED: 'archived',
+  CANCELLED: 'cancelled',
+};
+
+export const PROJECT_STATUS_LABELS = {
+  'draft': '草稿',
+  'planning': '规划中',
+  'in-progress': '执行中',
+  'paused': '已暂停',
+  'completed': '已完成',
+  'archived': '已归档',
+  'cancelled': '已取消',
+};
+
+export const PROJECT_STATUS_COLORS = {
+  'draft': '#9ca3af',
+  'planning': '#3b82f6',
+  'in-progress': '#22c55e',
+  'paused': '#eab308',
+  'completed': '#6366f1',
+  'archived': '#8b5cf6',
+  'cancelled': '#ef4444',
+};
+
+export const PROJECT_STATUS_FLOW = {
+  'draft': ['planning', 'cancelled'],
+  'planning': ['draft', 'in-progress', 'cancelled'],
+  'in-progress': ['paused', 'completed', 'cancelled'],
+  'paused': ['in-progress', 'cancelled'],
+  'completed': ['archived'],
+  'archived': [],
+  'cancelled': [],
+};
+
+export const TASK_STATUS = {
+  NOT_STARTED: 'not-started',
+  IN_PROGRESS: 'in-progress',
+  COMPLETED: 'completed',
+  DELAYED: 'delayed',
+  SEVERELY_DELAYED: 'severely-delayed',
+  PAUSED: 'paused',
+  OVERDUE_WARNING: 'overdue-warning',
+};
+
+export const TASK_STATUS_LABELS = {
+  'not-started': '未开始',
+  'in-progress': '进行中',
+  'completed': '已完成',
+  'delayed': '已延期',
+  'severely-delayed': '严重延期',
+  'paused': '已暂停',
+  'overdue-warning': '超期预警',
+};
+
 export function detectCyclicDependencies(tasks, dependencies) {
   const visited = new Set();
   const recStack = new Set();
@@ -270,14 +330,53 @@ export function getTaskStatus(task) {
   }
 
   if (task.progress >= 100) return 'completed';
-  if (task.progress > 0) return 'in-progress';
+  if (task.status === 'paused') return 'paused';
 
   const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const start = parseDate(task.startDate);
   const end = parseDate(task.endDate);
 
-  if (end < new Date(today.getFullYear(), today.getMonth(), today.getDate())) return 'delayed';
+  const plannedDuration = task.plannedDuration
+    ? task.plannedDuration
+    : differenceInCalendarDays(end, start) + 1;
+
+  let actualDuration;
+  if (task.actualDuration !== undefined && task.actualDuration !== null) {
+    actualDuration = task.actualDuration;
+  } else {
+    if (todayStart < start) {
+      actualDuration = 0;
+    } else if (todayStart > end) {
+      actualDuration = differenceInCalendarDays(todayStart, start) + 1;
+    } else {
+      actualDuration = differenceInCalendarDays(todayStart, start) + 1;
+    }
+  }
+
+  const durationRatio = plannedDuration > 0 ? actualDuration / plannedDuration : 0;
+
+  if (task.progress > 0 && task.progress < 100) {
+    if (end < todayStart) {
+      if (durationRatio >= 2) return 'severely-delayed';
+      if (durationRatio >= 1.5) return 'overdue-warning';
+      return 'delayed';
+    }
+    return 'in-progress';
+  }
+
+  if (end < todayStart) {
+    if (durationRatio >= 2) return 'severely-delayed';
+    if (durationRatio >= 1.5) return 'overdue-warning';
+    return 'delayed';
+  }
+
   if (start <= today) return 'in-progress';
-  if (task.status === 'paused') return 'paused';
+
   return 'not-started';
+}
+
+export function canTransitionProjectStatus(fromStatus, toStatus) {
+  const allowed = PROJECT_STATUS_FLOW[fromStatus] || [];
+  return allowed.includes(toStatus);
 }

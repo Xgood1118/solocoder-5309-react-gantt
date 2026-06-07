@@ -1,13 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { parseDate, calculateDuration, formatDate } from '../utils/dateUtils';
-import { getTaskStatus } from '../utils/criticalPath';
+import { getTaskStatus, TASK_STATUS_LABELS } from '../utils/criticalPath';
 
 const STATUS_COLORS = {
   'not-started': { bg: '#9ca3af', border: '#6b7280' },
   'in-progress': { bg: '#3b82f6', border: '#2563eb' },
   'completed': { bg: '#22c55e', border: '#16a34a' },
   'delayed': { bg: '#ef4444', border: '#dc2626' },
+  'severely-delayed': { bg: '#b91c1c', border: '#991b1b' },
   'paused': { bg: '#eab308', border: '#ca8a04' },
+  'overdue-warning': { bg: '#f97316', border: '#ea580c' },
 };
 
 export default function TaskBar({
@@ -23,6 +25,7 @@ export default function TaskBar({
   isDragging,
   isResizing,
   showTooltip = true,
+  readOnly = false,
 }) {
   const [showTooltipState, setShowTooltipState] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -83,7 +86,7 @@ export default function TaskBar({
           top: top + 6,
           width: 24,
           height: 24,
-          cursor: 'pointer',
+          cursor: readOnly ? 'default' : 'pointer',
           zIndex: isCritical ? 30 : 10,
         }}
         onMouseDown={handleMouseDown}
@@ -128,7 +131,7 @@ export default function TaskBar({
         top: top + 6,
         width,
         height: 28,
-        cursor: 'move',
+        cursor: readOnly ? 'default' : 'move',
         zIndex: isCritical ? 30 : 10,
       }}
       onMouseDown={handleMouseDown}
@@ -178,41 +181,49 @@ export default function TaskBar({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             textShadow: '0 1px 2px rgba(0,0,0,0.3)',
+            gap: 6,
           }}
         >
-          {task.name}
+          {status === 'severely-delayed' && (
+            <span style={{ fontSize: 14, fontWeight: 'bold' }}>⚠</span>
+          )}
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.name}</span>
         </div>
       </div>
 
-      <div
-        className="resize-handle resize-handle-left"
-        style={{
-          position: 'absolute',
-          left: -4,
-          top: 4,
-          width: 8,
-          height: 20,
-          cursor: 'ew-resize',
-          backgroundColor: 'transparent',
-          zIndex: 5,
-        }}
-        onMouseDown={handleLeftResizeMouseDown}
-      />
+      {!readOnly && (
+        <div
+          className="resize-handle resize-handle-left"
+          style={{
+            position: 'absolute',
+            left: -4,
+            top: 4,
+            width: 8,
+            height: 20,
+            cursor: 'ew-resize',
+            backgroundColor: 'transparent',
+            zIndex: 5,
+          }}
+          onMouseDown={handleLeftResizeMouseDown}
+        />
+      )}
 
-      <div
-        className="resize-handle resize-handle-right"
-        style={{
-          position: 'absolute',
-          right: -4,
-          top: 4,
-          width: 8,
-          height: 20,
-          cursor: 'ew-resize',
-          backgroundColor: 'transparent',
-          zIndex: 5,
-        }}
-        onMouseDown={handleRightResizeMouseDown}
-      />
+      {!readOnly && (
+        <div
+          className="resize-handle resize-handle-right"
+          style={{
+            position: 'absolute',
+            right: -4,
+            top: 4,
+            width: 8,
+            height: 20,
+            cursor: 'ew-resize',
+            backgroundColor: 'transparent',
+            zIndex: 5,
+          }}
+          onMouseDown={handleRightResizeMouseDown}
+        />
+      )}
 
       {showTooltipState && (
         <TaskTooltip
@@ -230,13 +241,11 @@ export default function TaskBar({
 }
 
 function TaskTooltip({ task, status, duration, subtaskDone, subtaskTotal, isCritical, position }) {
-  const statusText = {
-    'not-started': '未开始',
-    'in-progress': '进行中',
-    'completed': '已完成',
-    'delayed': '已延期',
-    'paused': '已暂停',
-  };
+  const plannedDuration = task.plannedDuration || duration;
+  const actualDuration = task.actualDuration !== undefined && task.actualDuration !== null
+    ? task.actualDuration
+    : duration;
+  const ratio = plannedDuration > 0 ? (actualDuration / plannedDuration).toFixed(1) : '0';
 
   return (
     <div
@@ -262,35 +271,52 @@ function TaskTooltip({ task, status, duration, subtaskDone, subtaskTotal, isCrit
           ⚠ 关键路径任务，延期会导致项目延期
         </div>
       )}
+      {status === 'severely-delayed' && (
+        <div style={{ color: '#b91c1c', marginBottom: 6, fontSize: 12, fontWeight: 500 }}>
+          ⚠ 严重延期！实际工期超过预计 {ratio} 倍
+        </div>
+      )}
+      {status === 'overdue-warning' && (
+        <div style={{ color: '#f97316', marginBottom: 6, fontSize: 12, fontWeight: 500 }}>
+          ⚡ 超期预警：实际工期超过预计 {ratio} 倍
+        </div>
+      )}
       <div style={{ color: '#6b7280', marginBottom: 4 }}>
-        <span style={{ display: 'inline-block', width: 60 }}>状态:</span>
-        <span style={{ color: '#1f2937', fontWeight: 500 }}>{statusText[status]}</span>
+        <span style={{ display: 'inline-block', width: 70 }}>状态:</span>
+        <span style={{ color: '#1f2937', fontWeight: 500 }}>{TASK_STATUS_LABELS[status] || status}</span>
       </div>
       <div style={{ color: '#6b7280', marginBottom: 4 }}>
-        <span style={{ display: 'inline-block', width: 60 }}>开始:</span>
+        <span style={{ display: 'inline-block', width: 70 }}>开始:</span>
         <span style={{ color: '#1f2937' }}>{formatDate(parseDate(task.startDate))}</span>
       </div>
       <div style={{ color: '#6b7280', marginBottom: 4 }}>
-        <span style={{ display: 'inline-block', width: 60 }}>结束:</span>
+        <span style={{ display: 'inline-block', width: 70 }}>结束:</span>
         <span style={{ color: '#1f2937' }}>{formatDate(parseDate(task.endDate))}</span>
       </div>
       <div style={{ color: '#6b7280', marginBottom: 4 }}>
-        <span style={{ display: 'inline-block', width: 60 }}>工期:</span>
-        <span style={{ color: '#1f2937' }}>{duration} 天</span>
+        <span style={{ display: 'inline-block', width: 70 }}>预计工期:</span>
+        <span style={{ color: '#1f2937' }}>{plannedDuration} 天</span>
       </div>
       <div style={{ color: '#6b7280', marginBottom: 4 }}>
-        <span style={{ display: 'inline-block', width: 60 }}>进度:</span>
+        <span style={{ display: 'inline-block', width: 70 }}>实际工期:</span>
+        <span style={{
+          color: ratio >= 2 ? '#b91c1c' : ratio >= 1.5 ? '#f97316' : '#1f2937',
+          fontWeight: ratio >= 1.5 ? 500 : 400,
+        }}>{actualDuration} 天{ratio >= 1.5 ? ` (${ratio}x)` : ''}</span>
+      </div>
+      <div style={{ color: '#6b7280', marginBottom: 4 }}>
+        <span style={{ display: 'inline-block', width: 70 }}>进度:</span>
         <span style={{ color: '#1f2937' }}>{task.progress || 0}%</span>
       </div>
       {task.assignee && (
         <div style={{ color: '#6b7280', marginBottom: 4 }}>
-          <span style={{ display: 'inline-block', width: 60 }}>负责人:</span>
+          <span style={{ display: 'inline-block', width: 70 }}>负责人:</span>
           <span style={{ color: '#1f2937' }}>{task.assignee}</span>
         </div>
       )}
       {subtaskTotal > 0 && (
         <div style={{ color: '#6b7280' }}>
-          <span style={{ display: 'inline-block', width: 60 }}>子任务:</span>
+          <span style={{ display: 'inline-block', width: 70 }}>子任务:</span>
           <span style={{ color: '#1f2937' }}>{subtaskDone}/{subtaskTotal} 完成</span>
         </div>
       )}

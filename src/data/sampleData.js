@@ -34,6 +34,8 @@ function createSampleProject() {
       description: '用户需求调研、产品设计、UI设计',
       order: 0,
       version: 1,
+      plannedDuration: 5,
+      actualDuration: 5,
       subtasks: [
         { id: newId(), name: '用户调研', done: true },
         { id: newId(), name: '产品原型', done: true },
@@ -53,6 +55,8 @@ function createSampleProject() {
       description: '技术方案评审、架构设计',
       order: 1,
       version: 1,
+      plannedDuration: 5,
+      actualDuration: 6,
       subtasks: [
         { id: newId(), name: '框架选型', done: true },
         { id: newId(), name: '数据库设计', done: true },
@@ -71,6 +75,8 @@ function createSampleProject() {
       description: '登录注册、验证码、密码找回',
       order: 2,
       version: 1,
+      plannedDuration: 5,
+      actualDuration: 8,
       subtasks: [
         { id: newId(), name: '登录页面', done: true },
         { id: newId(), name: '注册页面', done: true },
@@ -90,6 +96,8 @@ function createSampleProject() {
       description: '用户CRUD、角色权限',
       order: 3,
       version: 1,
+      plannedDuration: 10,
+      actualDuration: 22,
       subtasks: [
         { id: newId(), name: '用户列表', done: true },
         { id: newId(), name: '角色管理', done: false },
@@ -109,6 +117,8 @@ function createSampleProject() {
       description: '内部测试版本发布',
       order: 4,
       version: 1,
+      plannedDuration: 1,
+      actualDuration: 1,
       subtasks: [],
     },
     {
@@ -124,6 +134,8 @@ function createSampleProject() {
       description: '订单创建、支付、退款',
       order: 5,
       version: 1,
+      plannedDuration: 10,
+      actualDuration: 10,
       subtasks: [
         { id: newId(), name: '订单列表', done: false },
         { id: newId(), name: '支付接入', done: false },
@@ -143,6 +155,8 @@ function createSampleProject() {
       description: '数据看板、报表导出',
       order: 6,
       version: 1,
+      plannedDuration: 15,
+      actualDuration: 15,
       subtasks: [
         { id: newId(), name: '数据看板', done: false },
         { id: newId(), name: '报表导出', done: false },
@@ -161,6 +175,8 @@ function createSampleProject() {
       description: '功能测试、性能测试、Bug修复',
       order: 7,
       version: 1,
+      plannedDuration: 10,
+      actualDuration: 10,
       subtasks: [
         { id: newId(), name: '功能测试', done: false },
         { id: newId(), name: '性能测试', done: false },
@@ -180,6 +196,8 @@ function createSampleProject() {
       description: '生产环境正式上线',
       order: 8,
       version: 1,
+      plannedDuration: 1,
+      actualDuration: 1,
       subtasks: [],
     },
     {
@@ -195,6 +213,8 @@ function createSampleProject() {
       description: '上线后一周运维保障',
       order: 9,
       version: 1,
+      plannedDuration: 7,
+      actualDuration: 7,
       subtasks: [
         { id: newId(), name: '监控告警', done: false },
         { id: newId(), name: '问题响应', done: false },
